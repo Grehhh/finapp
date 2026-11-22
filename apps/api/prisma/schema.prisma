@@ -1,0 +1,96 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum BankConnectionStatus {
+  PENDING
+  ACTIVE
+  FAILED
+  REAUTH_REQUIRED
+}
+
+model BankConnection {
+  id                    String               @id @default(cuid())
+  provider              String               @default("enablebanking")
+  providerAuthorizationId String?            @unique
+  providerSessionId     String?              @unique
+  callbackState         String?              @unique
+  bankName              String
+  countryCode           String               @default("ES") @db.Char(2)
+  status                BankConnectionStatus @default(PENDING)
+  accessValidUntil      DateTime?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  accounts              BankAccount[]
+
+  @@index([status])
+}
+
+model BankAccount {
+  id                   String          @id @default(cuid())
+  connectionId         String
+  providerAccountId    String
+  name                 String?
+  accountNumberLast4   String?         @db.Char(4)
+  currency             String?         @db.Char(3)
+  accountType          String?
+  product              String?
+  lastSyncedAt         DateTime?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  connection           BankConnection  @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  balances             BankBalance[]
+  transactions         BankTransaction[]
+
+  @@unique([connectionId, providerAccountId])
+  @@index([connectionId])
+}
+
+model BankBalance {
+  id             String      @id @default(cuid())
+  accountId      String
+  name           String
+  balanceType    String      @default("UNKNOWN")
+  amount         Decimal     @db.Decimal(20, 4)
+  currency       String      @db.Char(3)
+  referenceDate  DateTime?   @db.Date
+  lastChangedAt  DateTime?
+  account        BankAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, balanceType, currency])
+  @@index([accountId])
+}
+
+model BankTransaction {
+  id                    String      @id @default(cuid())
+  accountId             String
+  dedupeKey             String
+  providerTransactionId String?
+  entryReference        String?
+  amount                Decimal     @db.Decimal(20, 4)
+  currency              String      @db.Char(3)
+  description           String?
+  counterpartyName      String?
+  merchantCategoryCode  String?
+  transactionCode       String?
+  status                String?
+  bookingDate           DateTime?   @db.Date
+  valueDate             DateTime?   @db.Date
+  transactionDate       DateTime?   @db.Date
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+  account               BankAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, dedupeKey])
+  @@index([accountId, bookingDate])
+}
