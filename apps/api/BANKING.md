@@ -57,19 +57,16 @@ No se debe usar un túnel local como ngrok en el flujo previsto. La aplicación 
 
 Al terminar una prueba AIS, lista `GET /banking/connections` y elimina cada conexión con `DELETE /banking/connections/:id`. Comprueba `providerConsentRevoked` en la respuesta. Si devuelve `false`, revoca el consentimiento desde el banco o el Control Panel. La ruta de desconexión llama a `DELETE /sessions/{session_id}` de Enable Banking; el proveedor indica que el consentimiento se cierra automáticamente cuando es posible. [Referencia de Enable Banking](https://enablebanking.com/docs/api/reference/).
 
-## Publicar solo la API mock en staging
+## Publicar la API y comprobarla desde Postman
 
 El `Dockerfile` de la raíz construye la API NestJS desde el monorepo y la inicia escuchando en `0.0.0.0` usando el `PORT` del entorno. El contexto de Docker debe ser la raíz del repositorio; `.dockerignore` excluye `.env`, claves privadas y secretos.
 
-Configura en el proveedor, como variables/secretos del servicio:
+Para una comprobación de disponibilidad con una única base productiva, configura `DATABASE_URL` y `FINAPP_API_TOKEN` como secretos, `FINAPP_ENV=production`, `BANKING_MOCK_ENABLED=false`, `HOST=0.0.0.0` y el `PORT` asignado por el proveedor. No cargues fixtures mock en la base productiva.
 
-- `DATABASE_URL`: base PostgreSQL de staging aislada.
-- `FINAPP_API_TOKEN`: token aleatorio de al menos 32 bytes.
-- `FINAPP_ENV=staging` y `BANKING_MOCK_ENABLED=true` para habilitar el fixture mock únicamente en staging.
-- `HOST=0.0.0.0` y el `PORT` asignado por el proveedor (el contenedor ya usa estos valores por defecto).
+Render puede consultar `GET /health` sin autenticación; solo devuelve el estado del proceso. Desde Postman, usa `GET /health/ready` con `Authorization: Bearer <FINAPP_API_TOKEN>` para confirmar además una consulta `SELECT 1` a PostgreSQL. Ninguna ruta lee ni escribe datos financieros y no requieren que las migraciones estén aplicadas.
 
-Si la base aún no tiene las tablas actuales, ejecuta antes del arranque las migraciones pendientes con `pnpm --filter api exec prisma migrate deploy --config prisma7.config.ts`. Las migraciones crean/actualizan las tablas que usa el código; `prisma generate` solo crea el cliente de código y no modifica la base.
+Las migraciones sí se necesitan antes de usar rutas que lean o escriban tablas de Finapp. `prisma generate` solo crea el cliente de código; `prisma migrate deploy` aplica las migraciones pendientes en la base. Antes de aplicar una migración, confirma que `DATABASE_URL` apunta a la única base productiva prevista.
 
-Para comprobar desde Postman que el servicio está operativo y conectado a PostgreSQL, llama `GET /banking/connections` con `Authorization: Bearer <FINAPP_API_TOKEN>`. Para cargar y consultar datos ficticios, llama `POST /banking/mock/seed` y después `GET /banking/accounts` o `GET /banking/transactions`, siempre con el mismo Bearer. No hace falta configurar credenciales de Enable Banking para esta prueba.
+`POST /banking/mock/seed` crea datos ficticios y sigue disponible solo en un entorno de staging aislado con `FINAPP_ENV=staging` y `BANKING_MOCK_ENABLED=true`. No lo habilites ni lo llames contra la base productiva. Esta comprobación de disponibilidad no necesita credenciales de Enable Banking.
 
 La ruta de desconexión llama a `DELETE /sessions/{session_id}` de Enable Banking; el proveedor indica que el consentimiento se cierra automáticamente cuando es posible. [Referencia de Enable Banking](https://enablebanking.com/docs/api/reference/).
